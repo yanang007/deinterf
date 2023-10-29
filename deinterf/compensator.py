@@ -95,40 +95,34 @@ class TollesLawsonCompensator:
         cos_y_dot = np.gradient(cos_y)
         cos_z_dot = np.gradient(cos_z)
 
-        cos_xx = vector_t * cos_x * cos_x / self.bt_scale
-        cos_xy = vector_t * cos_x * cos_y / self.bt_scale
-        cos_xz = vector_t * cos_x * cos_z / self.bt_scale
-        cos_yy = vector_t * cos_y * cos_y / self.bt_scale
-        cos_yz = vector_t * cos_y * cos_z / self.bt_scale
-        cos_zz = vector_t * cos_z * cos_z / self.bt_scale
-
-        cos_x_cos_x_dot = vector_t * cos_x * cos_x_dot / self.bt_scale
-        cos_x_cos_y_dot = vector_t * cos_x * cos_y_dot / self.bt_scale
-        cos_x_cos_z_dot = vector_t * cos_x * cos_z_dot / self.bt_scale
-        cos_y_cos_x_dot = vector_t * cos_y * cos_x_dot / self.bt_scale
-        cos_y_cos_y_dot = vector_t * cos_y * cos_y_dot / self.bt_scale
-        cos_y_cos_z_dot = vector_t * cos_y * cos_z_dot / self.bt_scale
-        cos_z_cos_x_dot = vector_t * cos_z * cos_x_dot / self.bt_scale
-        cos_z_cos_y_dot = vector_t * cos_z * cos_y_dot / self.bt_scale
-        cos_z_cos_z_dot = vector_t * cos_z * cos_z_dot / self.bt_scale
+        scaling_factor = vector_t / self.bt_scale
 
         permanent_items = [cos_x, cos_y, cos_z]
-        induced_items = [cos_xx, cos_xy, cos_xz, cos_yy, cos_yz, cos_zz]
+    
+        induced_items = [
+            scaling_factor * cos_x * cos_x,
+            scaling_factor * cos_x * cos_y,
+            scaling_factor * cos_x * cos_z,
+            scaling_factor * cos_y * cos_y,
+            scaling_factor * cos_y * cos_z,
+            scaling_factor * cos_z * cos_z
+        ]
+
         eddy_items = [
-            cos_x_cos_x_dot,
-            cos_x_cos_y_dot,
-            cos_x_cos_z_dot,
-            cos_y_cos_x_dot,
-            cos_y_cos_y_dot,
-            cos_y_cos_z_dot,
-            cos_z_cos_x_dot,
-            cos_z_cos_y_dot,
-            cos_z_cos_z_dot,
+            scaling_factor * cos_x * cos_x_dot,
+            scaling_factor * cos_x * cos_y_dot,
+            scaling_factor * cos_x * cos_z_dot,
+            scaling_factor * cos_y * cos_x_dot,
+            scaling_factor * cos_y * cos_y_dot,
+            scaling_factor * cos_y * cos_z_dot,
+            scaling_factor * cos_z * cos_x_dot,
+            scaling_factor * cos_z * cos_y_dot,
+            scaling_factor * cos_z * cos_z_dot
         ]
 
         if self._coefficients_num == 16:
-            induced_items = [item for item in induced_items if item is not cos_yy]
-            eddy_items = [item for item in eddy_items if item is not cos_y_cos_y_dot]
+            induced_items.remove(scaling_factor * cos_y * cos_y)
+            eddy_items.remove(scaling_factor * cos_y * cos_y_dot)
 
         return permanent_items, induced_items, eddy_items
 

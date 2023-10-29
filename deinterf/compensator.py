@@ -12,13 +12,15 @@ ArrayLike = Union[pd.Series, np.ndarray]
 
 class TollesLawsonCompensator:
     def __init__(self, coefficients_num: Literal[16, 18] = 16):
+        if coefficients_num not in [16, 18]:
+            raise ValueError("coefficients_num must be either 16 or 18.")
+        
         self._do_bpf = True
         self._using_permanent = True
         self._using_induced = True
         self._using_eddy = True
         self.bt_scale = 50000
-        if coefficients_num in [16, 18]:
-            self._coefficients_num = coefficients_num
+        self._coefficients_num = coefficients_num
         self.ridge_alphas = [0.1, 0.01, 0.001, 0.0001, 0.00001]
         self._sampling_rate = 10
 

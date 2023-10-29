@@ -36,19 +36,44 @@ class TollesLawsonCompensator:
         self.src_vec_z = np.array(vector_z)
         self.src_scalar = np.array(scalar)
 
-    def bpf(self, do_bpf=True):
-        self._do_bpf = do_bpf
+    @property
+    def do_bpf(self):
+        return self._do_bpf
 
+    @do_bpf.setter
+    def do_bpf(self, value=True):
+        self._do_bpf = value
+
+    @property
+    def sampling_rate(self):
+        return self._sampling_rate
+
+    @sampling_rate.setter
     def sampling_rate(self, fs):
         self._sampling_rate = fs
 
-    def using_permanent(self, use=True):
+    @property
+    def using_permanent(self):
+        return self._using_permanent
+
+    @using_permanent.setter
+    def using_permanent(self, use: bool):
         self._using_permanent = use
 
-    def using_induced(self, use=True):
+    @property
+    def using_induced(self):
+        return self._using_induced
+
+    @using_induced.setter
+    def using_induced(self, use: bool):
         self._using_induced = use
 
-    def using_eddy(self, use=True):
+    @property
+    def using_eddy(self):
+        return self._using_eddy
+
+    @using_eddy.setter
+    def using_eddy(self, use: bool):
         self._using_eddy = use
 
     def apply(

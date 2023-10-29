@@ -1,16 +1,25 @@
 [project]
 name = "deinterf"
 version = "0.0.1"
-description = "Compensation for magnetic interference from flight platform in aeromagnetic data"
-requires-python = ">=3.9"
-dependencies = ["numpy", "scipy", "pandas", "loguru", "scikit-learn"]
-authors = [{ name = "dorian", email = "dorian.li@outlook.com" }]
+description = "Aeromagnetic Data Compensation for Magnetic Interference"
 readme = "README.md"
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-]
+requires-python = ">=3.9"
+
+[project.dependencies]
+- "numpy"
+- "scipy"
+- "pandas"
+- "loguru"
+- "scikit-learn"
+
+[project.authors]
+name = "dorian"
+email = "dorian.li@outlook.com"
+
+[project.classifiers]
+- "Programming Language :: Python :: 3"
+- "License :: OSI Approved :: MIT License"
+- "Operating System :: OS Independent"
 
 [build-system]
 requires = ["hatchling"]

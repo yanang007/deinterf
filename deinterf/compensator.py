@@ -75,33 +75,17 @@ class TollesLawsonCompensator:
     @using_eddy.setter
     def using_eddy(self, use: bool):
         self._using_eddy = use
+        
+    def _create_filter(self):
+        b, a = butter(4, [0.1, 0.6], btype="bandpass", fs=self._sampling_rate, output="ba")
+        return b, a
 
-    def apply(
-        self,
-        flux_x: ArrayLike,
-        flux_y: ArrayLike,
-        flux_z: ArrayLike,
-        op: ArrayLike,
-    ):
-        flux_x = np.array(flux_x)
-        flux_y = np.array(flux_y)
-        flux_z = np.array(flux_z)
-        op = np.array(op)
-        X = self.make_X(flux_x, flux_y, flux_z)
-        y = self.model.predict(X)
-        interf = detrend(y, type="constant")
-        comped = op - interf
-        return comped, interf
+    def _filter_data(self, data):
+        b, a = self._create_filter()
+        return filtfilt(b, a, data, axis=0)
 
-    def filter(self, x):
-        b, a = butter(
-            4, [0.1, 0.6], btype="bandpass", fs=self._sampling_rate, output="ba"
-        )
-        return filtfilt(b, a, x, axis=0)
-
-    def make_X(self, vector_x, vector_y, vector_z):
+    def _compute_directional_cosine_components(self, vector_x, vector_y, vector_z):
         vector_t = np.linalg.norm(np.c_[vector_x, vector_y, vector_z], axis=1)
-        nans = np.full_like(vector_t, np.nan)
 
         cos_x = vector_x / vector_t
         cos_y = vector_y / vector_t
@@ -141,32 +125,34 @@ class TollesLawsonCompensator:
             cos_z_cos_y_dot,
             cos_z_cos_z_dot,
         ]
+
         if self._coefficients_num == 16:
             induced_items = [item for item in induced_items if item is not cos_yy]
             eddy_items = [item for item in eddy_items if item is not cos_y_cos_y_dot]
 
-        ret_items = [
-            permanent_items if self._using_permanent else [],
-            induced_items if self._using_induced else [],
-            eddy_items if self._using_eddy else [],
-        ]
+        return permanent_items, induced_items, eddy_items
 
-        ret = np.column_stack([item for components in ret_items for item in components])
+    def make_X(self, vector_x, vector_y, vector_z):
+        permanent_items, induced_items, eddy_items = self._compute_directional_cosine_components(vector_x, vector_y, vector_z)
 
-        return ret
+        features = []
+        if self._using_permanent:
+            features.extend(permanent_items)
+        if self._using_induced:
+            features.extend(induced_items)
+        if self._using_eddy:
+            features.extend(eddy_items)
+
+        return np.column_stack(features)
 
     @property
     def X(self):
         X = self.make_X(self.src_vec_x, self.src_vec_y, self.src_vec_z)
-        if self._do_bpf:
-            return self.filter(X)
-        return X
+        return self._filter_data(X) if self._do_bpf else X
 
     @property
     def y(self):
-        if self._do_bpf:
-            return self.filter(self.src_scalar)
-        return self.src_scalar
+        return self._filter_data(self.src_scalar) if self._do_bpf else self.src_scalar
 
     @cached_property
     def model(self):
@@ -174,13 +160,19 @@ class TollesLawsonCompensator:
         model.fit(self.X, self.y)
         return model
 
+    def apply(self, flux_x: ArrayLike, flux_y: ArrayLike, flux_z: ArrayLike, op: ArrayLike):
+        X = self.make_X(flux_x, flux_y, flux_z)
+        y = self.model.predict(X)
+        interf = detrend(y, type="constant")
+        comped = op - interf
+        return comped, interf
+
     def evaluate(self, uncomped, comped):
-        uncomped_bpf = self.filter(uncomped)
-        comped_bpf = self.filter(comped)
+        uncomped_bpf = self._filter_data(uncomped)
+        comped_bpf = self._filter_data(comped)
 
         uncomped_noise_level = np.std(uncomped_bpf)
         comped_noise_level = np.std(comped_bpf)
-
         ir = uncomped_noise_level / comped_noise_level
 
         logger.info(f"{uncomped_noise_level=}, {comped_noise_level=}, {ir=}")
@@ -189,10 +181,5 @@ class TollesLawsonCompensator:
 
     def evaluate_src(self):
         uncomped = self.src_scalar
-        comped, _ = self.apply(
-            self.src_vec_x,
-            self.src_vec_y,
-            self.src_vec_z,
-            self.src_scalar,
-        )
+        comped, _ = self.apply(self.src_vec_x, self.src_vec_y, self.src_vec_z, self.src_scalar)
         return self.evaluate(uncomped, comped)

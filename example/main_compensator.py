@@ -16,10 +16,10 @@ compor.fit(
     flt_d["mag_3_uc"],
 )
 # compor.sampling_rate(10)
-# compor.bpf(False)
-# compor.using_permanent()
-# compor.using_induced()
-# compor.using_eddy()
+# compor.do_bpf(False)
+# compor.using_permanent(True)
+# compor.using_induced(True)
+# compor.using_eddy(True)
 
 comped, interf = compor.apply(
     flt_d["flux_b_x"],

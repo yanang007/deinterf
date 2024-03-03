@@ -3,22 +3,16 @@ from __future__ import annotations
 from numbers import Integral
 
 import numpy as np
-from numpy import ndarray
-from numpy.typing import ArrayLike
 from scipy.signal import detrend
 from sklearn.base import BaseEstimator, OneToOneFeatureMixin, _fit_context
 from sklearn.linear_model import RidgeCV
 from sklearn.preprocessing import StandardScaler
 from sklearn.utils._param_validation import Interval, StrOptions
-from sklearn.utils.validation import (
-    check_consistent_length,
-    check_is_fitted,
-    column_or_1d,
-)
+from sklearn.utils.validation import check_consistent_length, check_is_fitted
 from typing_extensions import Literal, Self
 
 from deinterf.compensator.tmi.linear.terms import Terms
-from deinterf.foundation import ComposableTerm, Composition, Data, DataIOC
+from deinterf.foundation import ComposableTerm, Composition, DataIOC
 from deinterf.foundation.sensors import Tmi
 from deinterf.utils.filter import fom_bpfilter
 

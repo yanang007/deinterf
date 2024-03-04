@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from typing import Iterable
+
 import numpy as np
-from typing_extensions import Union
 
 from deinterf.utils.data_ioc import DataDescriptor, DataIOC
 
@@ -16,22 +17,22 @@ class Composition(ComposableTerm):
 
     def __init__(
             self,
-            terms: Union[ComposableTerm, Composition],
-            *other_terms: Union[ComposableTerm, Composition],
+            terms: ComposableTerm | Composition | Iterable[ComposableTerm],
+            *other_terms: ComposableTerm | Composition | Iterable[ComposableTerm],
             **kwargs
     ):
         super().__init__(**kwargs)
 
-        self.terms = []
+        _terms: list[ComposableTerm] = []
         for term in [terms, *other_terms]:
-            if isinstance(term, (tuple, list)):
-                self.terms.extend(term)
-            if isinstance(term, Composition):
-                self.terms.extend(term.terms)
+            if isinstance(term, Iterable):
+                _terms.extend(term)
+            elif isinstance(term, Composition):
+                _terms.extend(term.terms)
             else:
-                self.terms.append(term)
+                _terms.append(term)
 
-        self.terms = tuple(self.terms)
+        self.terms: tuple[ComposableTerm] = tuple(*_terms)
 
     def __getitem__(self, item):
         return type(self)(*(term[item] for term in self.terms))

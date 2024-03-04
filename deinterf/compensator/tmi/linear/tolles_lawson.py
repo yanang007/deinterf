@@ -12,8 +12,9 @@ from sklearn.utils.validation import check_consistent_length, check_is_fitted
 from typing_extensions import Literal, Self
 
 from deinterf.compensator.tmi.linear.terms import Terms
-from deinterf.foundation import ComposableTerm, Composition, DataIOC
+from deinterf.foundation import ComposableTerm, Composition
 from deinterf.foundation.sensors import Tmi
+from deinterf.utils.data_ioc import DataIOC
 from deinterf.utils.filter import fom_bpfilter
 
 
@@ -54,8 +55,8 @@ class TollesLawson(OneToOneFeatureMixin, BaseEstimator):
 
     @_fit_context(prefer_skip_nested_validation=True)
     def partial_fit(self, X: DataIOC, y: Tmi) -> Self:
-        measurement = y.data
-        tl_features = X[self.terms][0].data
+        measurement = y
+        tl_features = X[self.terms]
         check_consistent_length(tl_features, measurement)
 
         if self.norm:
@@ -85,8 +86,8 @@ class TollesLawson(OneToOneFeatureMixin, BaseEstimator):
 
     def transform(self, X: DataIOC, y: Tmi) -> Tmi:
         check_is_fitted(self)
-        measurement = y.data
-        interf = self.predict(X).data
+        measurement = y
+        interf = self.predict(X)
         comped = measurement - interf
 
         return Tmi(tmi=comped)
@@ -97,7 +98,7 @@ class TollesLawson(OneToOneFeatureMixin, BaseEstimator):
     def predict(self, X: DataIOC) -> Tmi:
         check_is_fitted(self)
 
-        tl_feats = X[self.terms][0].data
+        tl_feats = X[self.terms]
         if self.norm:
             tl_feats = self.scaler_.transform(tl_feats)
 

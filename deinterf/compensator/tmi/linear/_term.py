@@ -2,22 +2,20 @@ from __future__ import annotations
 
 import numpy as np
 
-from deinterf.foundation._data import Data, DataIOC
-from deinterf.foundation._term import ComposableTerm
+from deinterf.foundation import ComposableTerm
 from deinterf.foundation.sensors import DirectionalCosine, MagModulus
+from deinterf.utils.data_ioc import DataIOC
 
 
 class Permanent(ComposableTerm):
-    @classmethod
-    def __build__(cls, container: DataIOC, id=0) -> Data:
-        return container[DirectionalCosine][id]
+    def __build__(self, container: DataIOC) -> DirectionalCosine:
+        return container[DirectionalCosine]
 
 
 class Induced6(ComposableTerm):
-    @classmethod
-    def __build__(cls, container: DataIOC, id=0) -> Data:
-        modulus = container[MagModulus][id].data
-        cos_x, cos_y, cos_z = container[DirectionalCosine][id].data.T
+    def __build__(self, container: DataIOC) -> np.ndarray:
+        modulus = container[MagModulus]
+        cos_x, cos_y, cos_z = container[DirectionalCosine].T
         # (12301, 1) * (12301, 6) -> (12301, 6)
         feats = np.einsum(
             "ij,ij->ij",
@@ -33,25 +31,24 @@ class Induced6(ComposableTerm):
                 )
             ),
         )
-        return Data(*feats.T)
+        return feats
 
 
 class Induced5(ComposableTerm):
-    @classmethod
-    def __build__(cls, container: DataIOC, id=0) -> Data:
-        feats = Induced6.__build__(container, id).data
+    def __build__(self, container: DataIOC) -> np.ndarray:
+        feats = container[Induced6]
         feats = np.delete(feats, feats.shape[1] // 2, 1)
-        return Data(*feats.T)
+        return feats
 
 
-class Induced(Induced5): ...
+class Induced(Induced5):
+    ...
 
 
 class Eddy9(ComposableTerm):
-    @classmethod
-    def __build__(cls, container: DataIOC, id=0) -> Data:
-        modulus = container[MagModulus][id].data
-        cos_x, cos_y, cos_z = container[DirectionalCosine][id].data.T
+    def __build__(self, container: DataIOC) -> np.ndarray:
+        modulus = container[MagModulus]
+        cos_x, cos_y, cos_z = container[DirectionalCosine].T
         cos_x_dot = np.gradient(cos_x)
         cos_y_dot = np.gradient(cos_y)
         cos_z_dot = np.gradient(cos_z)
@@ -72,15 +69,15 @@ class Eddy9(ComposableTerm):
                 )
             ),
         )
-        return Data(*feats.T)
+        return feats
 
 
 class Eddy8(ComposableTerm):
-    @classmethod
-    def __build__(cls, container: DataIOC, id=0) -> Data:
-        feats = Eddy9.__build__(container, id).data
+    def __build__(self, container: DataIOC) -> np.ndarray:
+        feats = container[Eddy9]
         feats = np.delete(feats, feats.shape[1] // 2, 1)
-        return Data(*feats.T)
+        return feats
 
 
-class Eddy(Eddy8): ...
+class Eddy(Eddy8): 
+    ...

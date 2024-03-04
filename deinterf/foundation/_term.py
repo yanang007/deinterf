@@ -1,41 +1,40 @@
 from __future__ import annotations
 
 import numpy as np
-from typing_extensions import List, Union
+from typing_extensions import Union
 
-from deinterf.foundation._data import Data, DataIOC
-from deinterf.foundation.sensors import DirectionalCosine, MagModulus
+from deinterf.utils.data_ioc import DataDescriptor, DataIOC
 
 
-class ComposableTerm(Data):
-    def __init__(self) -> None: ...
-
+class ComposableTerm(DataDescriptor[np.ndarray]):
     def __or__(self, other: ComposableTerm):
         return Composition(self, other)
 
 
 class Composition(ComposableTerm):
+    __slots__ = ['terms']
+
     def __init__(
-        self,
-        term1: Union[ComposableTerm, Composition],
-        term2: Union[ComposableTerm, Composition],
+            self,
+            terms: Union[ComposableTerm, Composition],
+            *other_terms: Union[ComposableTerm, Composition],
+            **kwargs
     ):
-        terms1 = self._validate(term1)
-        terms2 = self._validate(term2)
-        self.terms = terms1 + terms2
+        super().__init__(**kwargs)
 
-    def __build__(self, container: DataIOC, id=0) -> Data:
-        terms_d = np.column_stack([container[term][id].data for term in self.terms])
-        return Data(*terms_d.T)
+        self.terms = []
+        for term in [terms, *other_terms]:
+            if isinstance(term, (tuple, list)):
+                self.terms.extend(term)
+            if isinstance(term, Composition):
+                self.terms.extend(term.terms)
+            else:
+                self.terms.append(term)
 
-    def _validate(
-        self, term: Union[ComposableTerm, Composition]
-    ) -> List[ComposableTerm]:
-        if not isinstance(term, ComposableTerm):
-            raise TypeError(
-                f"Term must be an instance of ComposableTerm, not {type(term)}"
-            )
-        if isinstance(term, Composition):
-            return term.terms
-        else:
-            return [term]
+        self.terms = tuple(self.terms)
+
+    def __getitem__(self, item):
+        return type(self)(*(term[item] for term in self.terms))
+
+    def __build__(self, container: DataIOC):
+        return np.column_stack([container[term] for term in self.terms])

@@ -2,9 +2,9 @@ import matplotlib.pyplot as plt
 from sgl2020 import Sgl2020
 
 from deinterf.compensator.tmi.linear import Terms, TollesLawson
-from deinterf.foundation import DataIOC
 from deinterf.foundation.sensors import MagVector, Tmi
 from deinterf.metrics.fom import improve_rate, noise_level
+from deinterf.utils.data_ioc import DataIOC
 
 if __name__ == "__main__":
     surv_d = (
@@ -42,14 +42,14 @@ if __name__ == "__main__":
     interf = compensator.predict(fom_data)
 
     # 评估磁补偿性能
-    comped_noise_level = noise_level(tmi_clean.data)
+    comped_noise_level = noise_level(tmi_clean)
     print(f"{comped_noise_level=}")
 
-    ir = improve_rate(tmi_with_interf.data, tmi_clean.data)
+    ir = improve_rate(tmi_with_interf, tmi_clean)
     print(f"{ir=}")
 
     # 简要绘图
-    plt.plot(tmi_with_interf.data, label="tmi_with_interf")
-    plt.plot(tmi_clean.data, label="tmi_clean")
+    plt.plot(tmi_with_interf, label="tmi_with_interf")
+    plt.plot(tmi_clean, label="tmi_clean")
     plt.legend()
     plt.show()

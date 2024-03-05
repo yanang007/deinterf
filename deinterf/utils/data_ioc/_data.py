@@ -16,7 +16,7 @@ class SupportsBuild(Protocol):
 
 
 class DataDescriptor(Generic[DataT]):
-    """用于在DataIOC中唯一标识一个数据和/或构造数据的描述符
+    """用于在DataIOC中唯一标识一个数据和/或构造数据的数据类型描述符
 
     Parameters
     ----------
@@ -27,45 +27,117 @@ class DataDescriptor(Generic[DataT]):
     -----
     `DataDescriptor` 需要作为字典的键，因此子类需要保证可哈希与可比较，如果每个成员变量均满足条件，则子类自动满足该条件。
 
-    如果id为负，则代表该描述符为弱id（非用户手动指定的id），在 `__build__` 过程中会自动重绑定到对应的id上，
+    相同类型的多个不同数据可以通过id来区分，不显式指定时默认为 `0` 。
+    例如三个个同类型的传感器读数可以使用 `Sensor` 、 `Sensor[1]` 和 `Sensor[2]` 来标识，
+    此时他们在 `DataIOC` 中可以映射到不同的数据上。
 
-    如果id为正，则代表该描述符为强id（用户手动指定的id或重绑定后的id），在 `__build__` 过程中不会被重绑定。
+    Examples
+    --------
+    默认创建的数据类型描述符例如 `Sensor` 具有弱id，代表他们是用于指示数据类型而非具体的某个数据，
+    如果在 __build__ 中使用这类描述符从 `DataIOC` 中提取数据，则会自动重映射到具体的id索引。
+    >>> from deinterf.utils.data_ioc import DataNDArray
+    >>>
+    >>> class SensorData(DataNDArray):
+    >>>     def __new__(cls, data, **kwargs):
+    >>>         return super().__new__(cls, data, **kwargs)
+    >>>
+    >>> class Sum(DataDescriptor):
+    >>>     def __build__(self, container: DataIOC):
+    >>>        return container[SensorData].sum()  # 不指定id，则获取的 SensorData 和 Sum 具有相同的id
+    >>>
+    >>> container = DataIOC().with_data(SensorData([1, 1, 1]), SensorData[1]([2, 2, 2]))  # 不显式指定时默认为 `0` 号数据
+    >>> print(container[Sum[0]], container[Sum[1]])
+    3 6
 
-    References
-    ----------
-    id重绑定过程 : :class:`IndexedDataIOC` 。
+    手动指定索引的数据类型描述符例如 `Sensor[1]` 具有强id，代表他们是用于指示某组具体的数据，
+    在 __build__ 中不会被重新映射。
+
+    >>> class OffsetSensor0(DataDescriptor):
+    >>>     def __build__(self, container: DataIOC):
+    >>>        base = container[SensorData[0]].sum()  # 指定id，显式获取 0 号 SensorData
+    >>>        return base + container[SensorData]
+    >>>
+    >>> print(container[OffsetSensor0[0]], container[OffsetSensor0[1]])
+    [4, 4, 4] [5, 5, 5]
     """
-
     __slots__ = ['_id']
+    DefaultWeakID = -1
 
-    def __init__(self, id=-1) -> None:
+    def __init__(self, id=DefaultWeakID) -> None:
         self.id = id
 
     @property
     def id(self):
-        if self._id < 0:
-            return -self._id - 1
+        if self.signed_id < 0:
+            return -self.signed_id - 1
         else:
-            return self._id
+            return self.signed_id
 
     @id.setter
     def id(self, val):
         self._id = val
 
     @property
-    def is_implicit_id(self):
-        return self._id < 0
+    def signed_id(self):
+        return self._id
+
+    @property
+    def is_weak_id(self):
+        return self.signed_id < 0
 
     def __build__(self, container: DataIOC) -> DataT: ...
 
-    def __getitem__(self, index) -> DataDescriptor[DataT]:
-        if not self.is_implicit_id:
-            raise RuntimeError(f'Trying to rebind strong id {self.id} to {index}.')
+    def index_weak(self, new_index, check_overriding=True):
+        return self.index(new_index, weak=True, check_overriding=check_overriding)
 
-        ret = copy.copy(self)
-        ret.id = index
+    def index(self, new_index, weak=False, check_overriding=True):
+        """将当前数据描述符绑定到新的id索引，以实现关联同类别的不同数据
+
+        例如三个个同类型的传感器读数可以使用：
+
+        * Sensor[0]
+        * Sensor[1]
+        * Sensor[2]
+
+        标识
+
+        Parameters
+        ----------
+        new_index
+            新的数据索引
+        weak
+            是否为弱索引
+        check_overriding
+            是否检查强索引重绑定
+
+        Returns
+        -------
+        新的索引id的数据类型
+        """
+        if new_index < 0:
+            weak = True
+        elif weak and new_index >= 0:
+            new_index = -new_index - 1
+
+        ret = self
+        if not weak or self.is_weak_id:
+            # 如果为强索引，或者当前为弱索引，则可以覆盖，重映射到新索引位置下的数据
+            ret = copy.copy(ret)
+            ret.id = new_index
+        else:
+            if check_overriding and not weak and not self.is_weak_id:
+                raise RuntimeError(f'Trying to rebind strong id {self.id} to weak id {new_index}.')
 
         return ret
+
+    def __getitem__(self, index) -> DataDescriptor[DataT]:
+        """直接强制绑定为新的id索引
+
+        Notes
+        -----
+        内部代码应优先使用 `index_weak` 以支持弱id的自动重绑定。
+        """
+        return self.index(index, check_overriding=False)
 
     def __class_getitem__(cls, id, *args):
         if isinstance(id, int):
@@ -134,7 +206,7 @@ class IndexedDataTypeDescriptor(DataDescriptor[DataT]):
         return self._dtype
 
     def __build__(self, container: DataIOC) -> DataT:
-        ret = _extract_builder(self.dtype, self.id)(container)
+        ret = _extract_builder(self.dtype, self.signed_id)(container)
         return ret
 
     def __call__(self, *args, **kwargs):
@@ -160,8 +232,12 @@ class IndexedType(type):
 
 class DataIOC:
     def __init__(self, allow_implicit_registering=True):
-        """
-        :param allow_implicit_registering: 允许隐式注册Data，若为False则只能获取/构建已注册的Data
+        """数据IOC容器
+
+        Parameters
+        ----------
+        allow_implicit_registering
+            允许隐式注册Data，若为False则只能获取/构建已注册的Data
         """
         self._collection: Dict[DataDescriptor | Type, Any] = {}
         self._lazy_collection: Dict[DataDescriptor | Type, Callable[[DataIOC], Any]] = {}
@@ -195,7 +271,7 @@ class DataIOC:
     ) -> Self:
         default_id = None
         if isinstance(data_type, DataDescriptor):
-            default_id = data_type.id
+            default_id = data_type.signed_id
 
         self._lazy_collection[data_type] = _extract_builder(provider, id=default_id)
 
@@ -245,6 +321,7 @@ class DataIOC:
         builder = self._lazy_collection.get(dtype, None)
         if builder is None:
             if isinstance(dtype, IndexedDataTypeDescriptor):
+                # 如果是带索引的类型，则进一步搜索该类型的通用构造器
                 builder = self._lazy_collection.get(dtype.dtype, None)
                 if builder is not None:
                     builder = _bind_builder_context(dtype.id, builder)
@@ -253,7 +330,7 @@ class DataIOC:
 
 
 class IndexedDataIOC(DataIOC):
-    def __init__(self, base_container: DataIOC, id=0):
+    def __init__(self, base_container: DataIOC, id=DataDescriptor.DefaultWeakID):
         super().__init__()
         self._base_container = base_container
         self._id = id
@@ -266,17 +343,17 @@ class IndexedDataIOC(DataIOC):
         return getattr(self._base_container, item)
 
     def __getitem__(self, item: Type[DataT] | DataDescriptor[DataT]) -> DataT:
-        if self._id != 0 and isinstance(item, DataDescriptor) and item.is_implicit_id:
-            return self._base_container[item[self._id]]
+        if isinstance(item, DataDescriptor):
+            return self._base_container[item.index_weak(self.id)]
         elif isinstance(item, type):
-            return self._base_container[IndexedDataTypeDescriptor(dtype=item, id=self._id)]
+            return self._base_container[IndexedDataTypeDescriptor(dtype=item, id=self.id)]
         else:
             return self._base_container[item]
 
 
 def _extract_builder(dtype: DataDescriptor | SupportsBuild | Callable, id=None):
     if isinstance(dtype, DataDescriptor):
-        id = dtype.id
+        id = dtype.signed_id
 
     if isinstance(dtype, SupportsBuild):
         builder = dtype.__build__

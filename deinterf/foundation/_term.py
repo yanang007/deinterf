@@ -32,10 +32,10 @@ class Composition(ComposableTerm):
             else:
                 _terms.append(term)
 
-        self.terms: tuple[ComposableTerm] = tuple(*_terms)
+        self.terms = tuple(_terms)
 
     def __getitem__(self, item):
-        return type(self)(*(term[item] for term in self.terms))
+        return type(self)(*(term.index_weak(item) for term in self.terms))
 
     def __build__(self, container: DataIOC):
         return np.column_stack([container[term] for term in self.terms])

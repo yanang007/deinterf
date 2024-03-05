@@ -19,9 +19,12 @@ def is_homogeneous(inp: np.ndarray, out: np.ndarray):
 
 
 class DataNDArray(np.ndarray, metaclass=IndexedType):
-    def __new__(cls, *arrays: ArrayLike, **kwargs):
+    def __new__(cls, *arrays: ArrayLike, force_column_stack=False, **kwargs):
         check_consistent_length(*arrays)
-        return np.column_stack(arrays).view(cls)
+        if force_column_stack or len(arrays) > 1:
+            return np.column_stack(arrays).view(cls)
+        else:
+            return np.asarray(arrays[0]).view(cls)
 
     def __array_finalize__(self, obj, **__):
         pass

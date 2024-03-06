@@ -14,7 +14,7 @@ from typing_extensions import Literal, Self
 from deinterf.compensator.tmi.linear.terms import Terms
 from deinterf.foundation import ComposableTerm, Composition
 from deinterf.foundation.sensors import Tmi
-from deinterf.utils.data_ioc import DataIOC
+from deinterf.utils.data_ioc import DataIoC
 from deinterf.utils.filter import fom_bpfilter
 
 
@@ -49,12 +49,12 @@ class TollesLawson(OneToOneFeatureMixin, BaseEstimator):
             del self.scaler_
 
     @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: DataIOC, y: Tmi) -> Self:
+    def fit(self, X: DataIoC, y: Tmi) -> Self:
         self._reset()
         return self.partial_fit(X, y)
 
     @_fit_context(prefer_skip_nested_validation=True)
-    def partial_fit(self, X: DataIOC, y: Tmi) -> Self:
+    def partial_fit(self, X: DataIoC, y: Tmi) -> Self:
         measurement = y
         tl_features = X[self.terms]
         check_consistent_length(tl_features, measurement)
@@ -84,7 +84,7 @@ class TollesLawson(OneToOneFeatureMixin, BaseEstimator):
 
         return self
 
-    def transform(self, X: DataIOC, y: Tmi) -> Tmi:
+    def transform(self, X: DataIoC, y: Tmi) -> Tmi:
         check_is_fitted(self)
         measurement = y
         interf = self.predict(X)
@@ -92,10 +92,10 @@ class TollesLawson(OneToOneFeatureMixin, BaseEstimator):
 
         return Tmi(tmi=comped)
 
-    def fit_transform(self, X: DataIOC, y: Tmi) -> Tmi:
+    def fit_transform(self, X: DataIoC, y: Tmi) -> Tmi:
         return self.fit(X, y).transform(X, y)
 
-    def predict(self, X: DataIOC) -> Tmi:
+    def predict(self, X: DataIoC) -> Tmi:
         check_is_fitted(self)
 
         tl_feats = X[self.terms]
@@ -107,7 +107,7 @@ class TollesLawson(OneToOneFeatureMixin, BaseEstimator):
 
         return Tmi(tmi=interf)
 
-    def fit_predict(self, X: DataIOC, y: Tmi) -> Tmi:
+    def fit_predict(self, X: DataIoC, y: Tmi) -> Tmi:
         return self.fit(X, y).predict(X)
 
     def _more_tags(self):

@@ -4,7 +4,7 @@ from typing import Iterable
 
 import numpy as np
 
-from deinterf.utils.data_ioc import DataDescriptor, DataIOC
+from deinterf.utils.data_ioc import DataDescriptor, DataIoC
 
 
 class ComposableTerm(DataDescriptor[np.ndarray]):
@@ -27,15 +27,16 @@ class Composition(ComposableTerm):
         for term in [terms, *other_terms]:
             if isinstance(term, Iterable):
                 _terms.extend(term)
-            elif isinstance(term, Composition):
-                _terms.extend(term.terms)
             else:
                 _terms.append(term)
 
         self.terms = tuple(_terms)
 
     def __getitem__(self, item):
-        return type(self)(*(term.index_weak(item) for term in self.terms))
+        return type(self)(term.index_implicit(item) for term in self.terms)
 
-    def __build__(self, container: DataIOC):
+    def __iter__(self):
+        yield from self.terms
+
+    def __build__(self, container: DataIoC):
         return np.column_stack([container[term] for term in self.terms])

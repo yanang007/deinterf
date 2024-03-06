@@ -4,7 +4,7 @@ from sgl2020 import Sgl2020
 from deinterf.compensator.tmi.linear import Terms, TollesLawson
 from deinterf.foundation.sensors import MagVector, Tmi
 from deinterf.metrics.fom import improve_rate, noise_level
-from deinterf.utils.data_ioc import DataIOC
+from deinterf.utils.data_ioc import DataIoC
 
 if __name__ == "__main__":
     surv_d = (
@@ -24,7 +24,7 @@ if __name__ == "__main__":
 
     # 数据准备
     tmi_with_interf = Tmi(tmi=flt_d["mag_3_uc"])
-    fom_data = DataIOC().add(
+    fom_data = DataIoC().add(
         MagVector(bx=flt_d["flux_b_x"], by=flt_d["flux_b_y"], bz=flt_d["flux_b_z"])
     )
 

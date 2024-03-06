@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import contextlib
 import copy
 import inspect
-from functools import partial
-from typing import Any, Dict, Protocol, Type, runtime_checkable, Callable, Generic, TypeVar, overload
+from typing import Any, Dict, Protocol, Type, runtime_checkable, Callable, Generic, TypeVar, overload, Union
 
 from typing_extensions import Self
 
@@ -12,11 +12,11 @@ DataT = TypeVar('DataT')
 
 @runtime_checkable
 class SupportsBuild(Protocol):
-    def __build__(self, container: DataIOC) -> Any: ...
+    def __build__(self, container: DataIoC) -> Any: ...
 
 
 class DataDescriptor(Generic[DataT]):
-    """用于在DataIOC中唯一标识一个数据和/或构造数据的数据类型描述符
+    """用于在DataIoC中唯一标识一个数据和/或构造数据的数据类型描述符
 
     Parameters
     ----------
@@ -29,12 +29,12 @@ class DataDescriptor(Generic[DataT]):
 
     相同类型的多个不同数据可以通过id来区分，不显式指定时默认为 `0` 。
     例如三个个同类型的传感器读数可以使用 `Sensor` 、 `Sensor[1]` 和 `Sensor[2]` 来标识，
-    此时他们在 `DataIOC` 中可以映射到不同的数据上。
+    此时他们在 `DataIoC` 中可以映射到不同的数据上。
 
     Examples
     --------
     默认创建的数据类型描述符例如 `Sensor` 具有弱id，代表他们是用于指示数据类型而非具体的某个数据，
-    如果在 __build__ 中使用这类描述符从 `DataIOC` 中提取数据，则会自动重映射到具体的id索引。
+    如果在 __build__ 中使用这类描述符从 `DataIoC` 中提取数据，则会自动重映射到具体的id索引。
     >>> from deinterf.utils.data_ioc import DataNDArray
     >>>
     >>> class SensorData(DataNDArray):
@@ -42,10 +42,10 @@ class DataDescriptor(Generic[DataT]):
     >>>         return super().__new__(cls, data, **kwargs)
     >>>
     >>> class Sum(DataDescriptor):
-    >>>     def __build__(self, container: DataIOC):
+    >>>     def __build__(self, container: DataIoC):
     >>>        return container[SensorData].sum()  # 不指定id，则获取的 SensorData 和 Sum 具有相同的id
     >>>
-    >>> container = DataIOC().with_data(SensorData([1, 1, 1]), SensorData[1]([2, 2, 2]))  # 不显式指定时默认为 `0` 号数据
+    >>> container = DataIoC().with_data(SensorData([1, 1, 1]), SensorData[1]([2, 2, 2]))  # 不显式指定时默认为 `0` 号数据
     >>> print(container[Sum[0]], container[Sum[1]])
     3 6
 
@@ -53,7 +53,7 @@ class DataDescriptor(Generic[DataT]):
     在 __build__ 中不会被重新映射。
 
     >>> class OffsetSensor0(DataDescriptor):
-    >>>     def __build__(self, container: DataIOC):
+    >>>     def __build__(self, container: DataIoC):
     >>>        base = container[SensorData[0]].sum()  # 指定id，显式获取 0 号 SensorData
     >>>        return base + container[SensorData]
     >>>
@@ -85,12 +85,15 @@ class DataDescriptor(Generic[DataT]):
     def is_weak_id(self):
         return self.signed_id < 0
 
-    def __build__(self, container: DataIOC) -> DataT: ...
+    def __build__(self, container: DataIoC) -> DataT: ...
 
-    def index_weak(self, new_index, check_overriding=True):
-        return self.index(new_index, weak=True, check_overriding=check_overriding)
+    def index_implicit(self, new_index):
+        return self.index(new_index, weak=True)
 
-    def index(self, new_index, weak=False, check_overriding=True):
+    def index_explicit(self, new_index):
+        return self.index(new_index, weak=True)
+
+    def index(self, new_index, weak=True):
         """将当前数据描述符绑定到新的id索引，以实现关联同类别的不同数据
 
         例如三个个同类型的传感器读数可以使用：
@@ -106,27 +109,17 @@ class DataDescriptor(Generic[DataT]):
         new_index
             新的数据索引
         weak
-            是否为弱索引
-        check_overriding
-            是否检查强索引重绑定
+            是否为弱绑定，弱绑定下，如果目标为强索引，则索引失效
 
         Returns
         -------
         新的索引id的数据类型
         """
-        if new_index < 0:
-            weak = True
-        elif weak and new_index >= 0:
-            new_index = -new_index - 1
-
         ret = self
         if not weak or self.is_weak_id:
             # 如果为强索引，或者当前为弱索引，则可以覆盖，重映射到新索引位置下的数据
             ret = copy.copy(ret)
             ret.id = new_index
-        else:
-            if check_overriding and not weak and not self.is_weak_id:
-                raise RuntimeError(f'Trying to rebind strong id {self.id} to weak id {new_index}.')
 
         return ret
 
@@ -135,9 +128,9 @@ class DataDescriptor(Generic[DataT]):
 
         Notes
         -----
-        内部代码应优先使用 `index_weak` 以支持弱id的自动重绑定。
+        内部代码应优先使用 `index_implicit` 以支持弱id的自动重绑定。
         """
-        return self.index(index, check_overriding=False)
+        return self.index_explicit(index)
 
     def __class_getitem__(cls, id, *args):
         if isinstance(id, int):
@@ -205,8 +198,8 @@ class IndexedDataTypeDescriptor(DataDescriptor[DataT]):
     def dtype(self):
         return self._dtype
 
-    def __build__(self, container: DataIOC) -> DataT:
-        ret = _extract_builder(self.dtype, self.signed_id)(container)
+    def __build__(self, container: DataIoC) -> DataT:
+        ret = _extract_builder_with_context(self.dtype, self)(container)
         return ret
 
     def __call__(self, *args, **kwargs):
@@ -214,6 +207,10 @@ class IndexedDataTypeDescriptor(DataDescriptor[DataT]):
             self,
             self.dtype(*args, **kwargs)
         )
+
+    def __repr__(self):
+        id_str = f'[{self.id}]' if self.id > 0 else ''
+        return f'{self.dtype.__name__}{id_str}'
 
 
 class DescribedData:
@@ -230,18 +227,23 @@ class IndexedType(type):
         return f'{self.__name__}'
 
 
-class DataIOC:
-    def __init__(self, allow_implicit_registering=True):
-        """数据IOC容器
+class DataIoC:
+    def __init__(self, allow_implicit_registering=True, record_all=False):
+        """数据IoC容器
 
         Parameters
         ----------
         allow_implicit_registering
             允许隐式注册Data，若为False则只能获取/构建已注册的Data
+        record_all
+            是否保存所有IoC访问记录，若为False则只保留当次访问依赖用于调试输出，否则会保留完整访问树（可能导致额外开销）
         """
         self._collection: Dict[DataDescriptor | Type, Any] = {}
-        self._lazy_collection: Dict[DataDescriptor | Type, Callable[[DataIOC], Any]] = {}
+        self._lazy_collection: Dict[DataDescriptor | Type, Callable[[DataIoC], Any]] = {}
         self.allow_implicit_register = allow_implicit_registering
+        self.record_all = record_all
+
+        self._logger = _DataIoCAccessLogger(key=self)
 
     def with_data(self, *data: Any) -> Self:
         for d in data:
@@ -255,7 +257,7 @@ class DataIOC:
     def add(self, data_type: DataT | Type[DataT] | DataDescriptor[DataT], data: DataT | None = None) -> Self:
         if data is None:
             if isinstance(data_type, DataDescriptor) or isinstance(data_type, type):
-                builder = _extract_builder(data_type)
+                builder = _extract_builder_with_context(data_type)
                 self._lazy_collection[data_type] = builder
             else:
                 self.with_data(data_type)
@@ -269,13 +271,21 @@ class DataIOC:
             data_type: Type[DataT] | DataDescriptor[DataT],
             provider: SupportsBuild | Callable
     ) -> Self:
-        default_id = None
+        initiator = None
         if isinstance(data_type, DataDescriptor):
-            default_id = data_type.signed_id
+            initiator = data_type
 
-        self._lazy_collection[data_type] = _extract_builder(provider, id=default_id)
+        self._lazy_collection[data_type] = Provider(
+            initiator=initiator,
+            builder=_extract_builder(provider),
+            target=provider
+        )
 
         return self
+
+    @property
+    def logger(self):
+        return self._logger
 
     @overload
     def __getitem__(self, dtype: DataDescriptor[DataT]) -> DataT: ...
@@ -287,19 +297,36 @@ class DataIOC:
     def __getitem__(self, dtype: Type[DataT]) -> DataT: ...
 
     def __getitem__(self, dtype: Type[DataT] | DataDescriptor[DataT]) -> DataT:
-        ret = self._collection.get(dtype, None)
-        if ret is None:
-            builder = self.find_builder(dtype)
-            if builder is None:
-                if not self.allow_implicit_register:
-                    raise RuntimeError(f'Builder for {repr(dtype)} not found in {DataIOC.__name__}.')
-                else:
-                    self.add(dtype)
-                    ret = self[dtype]
-            else:
-                ret = builder(self)
+        with self._logger.add(dtype):
+            ret = self._collection.get(dtype, None)
 
-            self[dtype] = ret
+            if ret is None:
+                builder = self.find_builder(dtype)
+
+                if builder is None:
+                    if not self.allow_implicit_register:
+                        raise RuntimeError(f'Builder for {repr(dtype)} not found in {DataIoC.__name__}.')
+                    else:
+                        self.add(dtype)
+                        builder = self.find_builder(dtype)
+
+                if builder is not None:
+                    if isinstance(builder, Provider):
+                        self._logger.mark_overwrite(builder.target)
+
+                    try:
+                        ret = builder(self)
+                    except (Exception,):
+                        self._logger.mark_failed()
+                        if self._logger.at_level0:
+                            print(self._logger)
+                        raise
+
+                    self._logger.mark_new()
+                    self[dtype] = ret
+
+        if self._logger.at_root and not self.record_all:
+            self._logger.clear()
 
         return ret
 
@@ -324,59 +351,266 @@ class DataIOC:
                 # 如果是带索引的类型，则进一步搜索该类型的通用构造器
                 builder = self._lazy_collection.get(dtype.dtype, None)
                 if builder is not None:
-                    builder = _bind_builder_context(dtype.id, builder)
+                    builder = _bind_builder_context(initiator=dtype, builder=builder)
 
         return builder
 
+    def __str__(self):
+        return type(self).__name__
 
-class IndexedDataIOC(DataIOC):
-    def __init__(self, base_container: DataIOC, id=DataDescriptor.DefaultWeakID):
+
+class IndexedDataIoC(DataIoC):
+    def __init__(self, base_container: DataIoC, initiator=None):
         super().__init__()
         self._base_container = base_container
-        self._id = id
+        self._initiator = initiator
 
     @property
     def id(self):
-        return self._id
+        if self._initiator is None:
+            return DataDescriptor.DefaultWeakID
+        else:
+            return self._initiator.signed_id
 
     def __getattr__(self, item):
         return getattr(self._base_container, item)
 
     def __getitem__(self, item: Type[DataT] | DataDescriptor[DataT]) -> DataT:
+        if isinstance(item, type):
+            item = IndexedDataTypeDescriptor(dtype=item, id=self.id)
+
         if isinstance(item, DataDescriptor):
-            return self._base_container[item.index_weak(self.id)]
-        elif isinstance(item, type):
-            return self._base_container[IndexedDataTypeDescriptor(dtype=item, id=self.id)]
+            item = item.index_implicit(self.id)
+        ret = self._base_container[item]
+
+        return ret
+
+
+class _DataIoCDependency(list[tuple[Union[DataDescriptor, Type], '_DataIoCDependency']]):
+    def __init__(self, parent, key, new=False):
+        super().__init__()
+        self._parent = parent
+        self._key = key
+        self._new = new
+        self._overwrite = None
+        self._failed = False
+
+    def mark_new(self):
+        self._new = True
+
+    def mark_overwrite(self, key):
+        self._overwrite = key
+
+    def mark_failed(self):
+        self._failed = True
+
+    def add(self, key):
+        ret = self.get(key, None)
+        if ret is None:
+            ret = _DataIoCDependency(parent=self, key=key)
+            self[key] = ret
+
+        return ret
+
+    @property
+    def parent(self):
+        return self._parent
+
+    @property
+    def last_child(self):
+        if len(self) == 0:
+            return None
+
+        return self[-1][0]
+
+    def __contains__(self, item):
+        for k, v in self:
+            if item == k:
+                return True
         else:
-            return self._base_container[item]
+            return False
+
+    def __setitem__(self, key, value):
+        self.append((key, value))
+
+    def __getitem__(self, item):
+        for k, v in self:
+            if item == k:
+                return v
+        else:
+            raise KeyError(item)
+
+    def get(self, item, default=None):
+        try:
+            return self[item]
+        except KeyError:
+            return default
+
+    def to_str(self, prefix=None, indent='', table_prefix='', align_first_non_blank=True):
+        if prefix is None:
+            prefix = ' * '
+
+        this_prefix = prefix
+        properties = []
+        if self._failed:
+            this_prefix = this_prefix.replace('*', 'X')
+            if this_prefix == prefix:
+                properties.append(' X <--- Failed here ')
+        if self._new:
+            properties.append('Created')
+
+        if len(properties) == 0:
+            props = ''
+        else:
+            props = ' /' + ', '.join(properties) + '/'
+
+        key = str(self._key)
+        if self._overwrite is not None:
+            key = str(self._overwrite) + f' ( <- {key})'
+
+        ret = table_prefix + this_prefix + key + props + '\n'
+
+        if align_first_non_blank:
+            for c in prefix:
+                if c == ' ':
+                    indent += ' '
+                else:
+                    break
+
+        remaining = len(self)
+        for k, v in self:
+            if remaining > 1:
+                ret += v.to_str(prefix=prefix, table_prefix=indent + '├─', indent=indent + '│ ')
+            else:
+                ret += v.to_str(prefix=prefix, table_prefix=indent + '└─', indent=indent + '  ')
+
+            remaining -= 1
+
+        return ret
+
+    def __str__(self):
+        return self.to_str()
 
 
-def _extract_builder(dtype: DataDescriptor | SupportsBuild | Callable, id=None):
-    if isinstance(dtype, DataDescriptor):
-        id = dtype.signed_id
+class _DataIoCAccessLogger:
+    def __init__(self, key: Any = 'root'):
+        self.root = _DataIoCDependency(None, key)
+        self.current = self.root
 
+    @property
+    def at_level0(self):
+        """判断是否在某个子访问树的根节点
+        """
+        return self.current.parent is self.root
+
+    @property
+    def at_root(self):
+        """判断是否在根节点
+        """
+        return self.current is self.root
+
+    @contextlib.contextmanager
+    def add(self, key):
+        child = self.current.add(key)
+
+        try:
+            self.enter(child)
+            yield
+        finally:
+            self.exit()
+
+    def clear(self):
+        self.root.clear()
+
+    def mark_new(self):
+        self.current.mark_new()
+
+    def mark_overwrite(self, key):
+        self.current.mark_overwrite(key)
+
+    def mark_failed(self):
+        self.current.mark_failed()
+
+    def __enter__(self):
+        self.enter()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.exit()
+
+    def enter(self, node=None):
+        if node is None:
+            node = self.current.last_child
+        self.current = node
+
+    def exit(self):
+        self.current = self.current.parent
+
+    def to_str(self, prefix=None):
+        return self.root.to_str(prefix=prefix)
+
+    def __str__(self):
+        return self.to_str()
+
+
+def _extract_builder_with_context(dtype: DataDescriptor | SupportsBuild | Callable, initiator=None):
+    if initiator is None:
+        if isinstance(dtype, DataDescriptor):
+            initiator = dtype
+
+    builder = _extract_builder(dtype)
+
+    if builder is None:
+        return builder
+    else:
+        return _bind_builder_context(builder, initiator=initiator)
+
+
+def _extract_builder(dtype: DataDescriptor | SupportsBuild | Callable):
     if isinstance(dtype, SupportsBuild):
         builder = dtype.__build__
     elif callable(dtype):
         # 类型的构造函数
         # 或者直接的构造器函数
-        # TODO: 添加校验，验证可以用于DataIOC
+        # TODO: 添加校验，验证可以用于DataIoC
         builder = dtype
     else:
         builder = None
 
-    if builder is None:
+    return builder
+
+
+def _bind_builder_context(builder, initiator):
+    if initiator is None:
         return builder
+    elif isinstance(builder, BuilderWithContext):
+        return builder.with_initiator(initiator)
     else:
-        return _bind_builder_context(id, builder)
+        return BuilderWithContext(initiator, builder)
 
 
-def _bind_builder_context(id, builder):
-    if id is None:
-        return builder
-    else:
-        return partial(_bind_default_index, id, builder)
+class BuilderWithContext:
+    def __init__(self, initiator, builder):
+        self.initiator = initiator
+        self.builder = builder
+
+    def __call__(self, container: DataIoC):
+        return self.builder(IndexedDataIoC(container, initiator=self.initiator))
+
+    def with_initiator(self, initiator):
+        ret = copy.copy(self)
+        ret.initiator = initiator
+
+        return ret
 
 
-def _bind_default_index(id: int, builder, container: DataIOC):
-    return builder(IndexedDataIOC(container, id=id))
+class Provider(BuilderWithContext):
+    def __init__(self, initiator, builder, target):
+        super().__init__(initiator, builder)
+        self._target = target
+
+    @property
+    def target(self):
+        if isinstance(self._target, DataDescriptor):
+            return self._target
+        else:
+            return self._target.__name__

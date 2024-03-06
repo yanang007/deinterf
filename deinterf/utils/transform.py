@@ -12,9 +12,9 @@ from sklearn.utils.validation import check_array
     },
     prefer_skip_nested_validation=True,
 )
-def magvec2modulus(magvec: ArrayLike, copy=True) -> ndarray:
+def magvec2intensity(magvec: ArrayLike, copy=True) -> ndarray:
     """
-    根据磁矢量计算磁总场
+    根据磁矢量计算磁总场强
 
     Parameters
     ----------
@@ -23,8 +23,8 @@ def magvec2modulus(magvec: ArrayLike, copy=True) -> ndarray:
 
     Returns
     -------
-    tmi : ndarray of shape (n_samples,)
-        磁总场数据
+    intensity : ndarray of shape (n_samples,)
+        磁总场强数据
     """
     magvec = check_array(magvec, ensure_min_features=3, copy=copy)
     return np.linalg.norm(magvec, axis=1)
@@ -55,10 +55,10 @@ def magvec2dircosine(magvec: ArrayLike, copy=True) -> ndarray:
 
     bx, by, bz = np.transpose(magvec)
 
-    modulus = magvec2modulus(magvec)
+    intensity = magvec2intensity(magvec)
 
-    dir_conise_x = bx / modulus
-    dir_conise_y = by / modulus
-    dir_conise_z = bz / modulus
+    dir_conise_x = bx / intensity
+    dir_conise_y = by / intensity
+    dir_conise_z = bz / intensity
 
     return np.column_stack((dir_conise_x, dir_conise_y, dir_conise_z))

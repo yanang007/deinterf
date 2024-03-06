@@ -3,8 +3,8 @@ from __future__ import annotations
 import numpy as np
 from numpy.typing import ArrayLike
 
-from deinterf.utils.data_ioc import DataNDArray, DataIOC
-from deinterf.utils.transform import magvec2dircosine, magvec2modulus
+from deinterf.utils.data_ioc import DataNDArray, DataIoC
+from deinterf.utils.transform import magvec2dircosine, magvec2intensity
 
 
 class MagVector(DataNDArray):
@@ -24,11 +24,11 @@ class MagVector(DataNDArray):
         return self[:, 2]
 
 
-class MagModulus(DataNDArray):
+class MagIntensity(DataNDArray):
     @classmethod
-    def __build__(cls, container: DataIOC):
-        modulus = magvec2modulus(container[MagVector])
-        return cls(modulus)
+    def __build__(cls, container: DataIoC):
+        intensity = magvec2intensity(container[MagVector])
+        return cls(intensity)
 
 
 class Tmi(DataNDArray):
@@ -41,7 +41,7 @@ class DirectionalCosine(DataNDArray):
         return super().__new__(cls, dir_cosine_x, dir_cosine_y, dir_cosine_z)
 
     @classmethod
-    def __build__(cls, container: DataIOC) -> DirectionalCosine:
+    def __build__(cls, container: DataIoC) -> DirectionalCosine:
         dir_cosine = magvec2dircosine(container[MagVector])
         dir_cosine_x, dir_cosine_y, dir_cosine_z = np.transpose(dir_cosine)
         return cls(

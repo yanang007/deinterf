@@ -4,7 +4,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 from sklearn.utils import check_consistent_length
 
-from ._data import IndexedType, DataIOC, IndexedDataIOC
+from ._data import IndexedType, DataIoC, IndexedDataIoC
 
 
 def is_homogeneous(inp: np.ndarray, out: np.ndarray):
@@ -52,8 +52,8 @@ class DataNDArray(np.ndarray, metaclass=IndexedType):
         return super().__getitem__(item).view(np.ndarray)
 
     @classmethod
-    def __build__(cls, container: DataIOC | IndexedDataIOC):
-        id_str = f'[{container.id}]' if isinstance(container, IndexedDataIOC) else ''
+    def __build__(cls, container: DataIoC | IndexedDataIoC):
+        id_str = f'[{container.id}]' if isinstance(container, IndexedDataIoC) else ''
         raise NotImplementedError(
             f'{cls.__name__}{id_str} must be provided.'
         )

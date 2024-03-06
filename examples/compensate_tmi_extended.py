@@ -5,7 +5,7 @@ from sgl2020 import Sgl2020
 from deinterf.compensator.tmi.linear import Terms, TollesLawson
 from deinterf.foundation.sensors import MagVector, Tmi, DirectionalCosine
 from deinterf.metrics.fom import improve_rate, noise_level
-from deinterf.utils.data_ioc import DataIOC, DataNDArray
+from deinterf.utils.data_ioc import DataIoC, DataNDArray
 from deinterf.utils.transform import magvec2dircosine
 
 
@@ -54,7 +54,7 @@ if __name__ == "__main__":
 
     # 数据准备
     tmi_with_interf = Tmi(tmi=flt_d["mag_3_uc"])
-    fom_data = DataIOC().with_data(
+    fom_data = DataIoC().with_data(
         MagVector[1](bx=flt_d["flux_b_x"], by=flt_d["flux_b_y"], bz=flt_d["flux_b_z"]),
         InertialAttitude[1](yaw=flt_d["ins_yaw"], pitch=flt_d["ins_pitch"], roll=flt_d["ins_roll"]),
     )

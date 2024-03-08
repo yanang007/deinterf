@@ -4,7 +4,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 from sklearn.utils import check_consistent_length
 
-from ._data import IndexedType, DataIoC, IndexedDataIoC
+from ._data import IndexedData, DataIoC, IndexedDataIoC
 
 
 def is_homogeneous(inp: np.ndarray, out: np.ndarray):
@@ -18,7 +18,7 @@ def is_homogeneous(inp: np.ndarray, out: np.ndarray):
     return True
 
 
-class DataNDArray(np.ndarray, metaclass=IndexedType):
+class DataNDArray(np.ndarray, IndexedData):
     def __new__(cls, *arrays: ArrayLike, force_column_stack=False, **kwargs):
         check_consistent_length(*arrays)
         if force_column_stack or len(arrays) > 1:

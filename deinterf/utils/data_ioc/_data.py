@@ -62,6 +62,7 @@ class DataDescriptor(Generic[DataT]):
     """
     __slots__ = ['_id']
     DefaultWeakID = -1
+    DefaultID = -DefaultWeakID - 1
 
     def __init__(self, id=DefaultWeakID) -> None:
         self.id = id
@@ -184,11 +185,15 @@ class DataDescriptor(Generic[DataT]):
 class IndexedDataTypeDescriptor(DataDescriptor[DataT]):
     __slots__ = ['_dtype']
 
-    def __new__(cls, dtype, *args, **kwargs):
-        if issubclass(dtype, DataDescriptor):
-            return dtype(*args, **kwargs)
+    @classmethod
+    def of(cls, dtype, id=DataDescriptor.DefaultWeakID):
+        if isinstance(dtype, IndexedDataMeta):
+            return type(dtype).__getitem__(dtype, id)
+        elif issubclass(dtype, DataDescriptor):
+            return dtype(id)
         else:
-            return super().__new__(cls)
+            # 常规类型，不允许进行索引，强制绑定为默认索引
+            return cls(dtype, id=DataDescriptor.DefaultID)
 
     def __init__(self, dtype: Type, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -219,12 +224,38 @@ class DescribedData:
         self.data = data
 
 
-class IndexedType(type):
-    def __getitem__(self, id, *args):
-        return IndexedDataTypeDescriptor(self, *args, id=id)
+class IndexedDataMeta(type):
+    """指示一个类型为可索引类型，支持在DataIoC容器中绑定多组相关数据，并通过索引来进行区分
+
+    Notes
+    -----
+    派生类可以通过自己定义 `__class_index__` 方法来自定义索引行为
+
+    派生类可以通过继承 `UniqueData` 来指示该类型唯一，不需要索引
+
+    所有非 `IndexedData` 子类的类型均视为唯一类型，不会被索引
+    """
+
+    def __getitem__(self, id=DataDescriptor.DefaultWeakID, *args):
+        class_getitem = getattr(self, '__class_index__', None)
+        if class_getitem is not None:
+            return class_getitem(id, *args)
+        else:
+            return IndexedDataTypeDescriptor(self, *args, id=id)
 
     def __repr__(self):
         return f'{self.__name__}'
+
+
+class IndexedData(metaclass=IndexedDataMeta):
+    pass
+
+
+class UniqueData:
+    @classmethod
+    def __class_index__(cls, id, *args):
+        # 强制绑定为默认索引来保证所有隐式访问下会得到同一组数据
+        return IndexedDataTypeDescriptor(cls, *args, id=DataDescriptor.DefaultID)
 
 
 class DataIoC:
@@ -336,7 +367,7 @@ class DataIoC:
             self._collection[data_type.dtype] = data
         if isinstance(data_type, type):
             # 对于直接用类名绑定，则默认同时绑定对应的0号数据
-            self._collection[IndexedDataTypeDescriptor(dtype=data_type)] = data
+            self._collection[IndexedDataTypeDescriptor.of(data_type)] = data
 
     def find_builder(self, dtype: Type[DataT] | DataDescriptor[DataT]):
         """查找构造器
@@ -377,10 +408,10 @@ class IndexedDataIoC(DataIoC):
 
     def __getitem__(self, item: Type[DataT] | DataDescriptor[DataT]) -> DataT:
         if isinstance(item, type):
-            item = IndexedDataTypeDescriptor(dtype=item, id=self.id)
-
-        if isinstance(item, DataDescriptor):
+            item = IndexedDataTypeDescriptor.of(item, id=self.id)
+        elif isinstance(item, DataDescriptor):
             item = item.index_implicit(self.id)
+
         ret = self._base_container[item]
 
         return ret

@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from typing import NamedTuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,86 +11,42 @@ from sgl2020 import Sgl2020
 from deinterf.compensator.tmi.linear import Terms, TollesLawson
 from deinterf.foundation.sensors import DirectionalCosine, MagVector, Tmi
 from deinterf.metrics.fom import improve_rate
-from deinterf.utils.data_ioc import DataIoC, DataNDArray
+from deinterf.utils.data_ioc import DataIoC, DataNDArray, UniqueData
 from deinterf.utils.transform import magvec2dircosine
 
 
-class WGS84(DataNDArray):
+class LocationWGS84(DataNDArray, UniqueData):
+    """显式指定为唯一数据
+    """
     def __new__(cls, lon: ArrayLike, lat: ArrayLike, alt: ArrayLike):
         return super().__new__(cls, lon, lat, alt)
 
-    @property
-    def lon(self):
-        # unit: degree
-        return self[:, 0]
 
-    @property
-    def lat(self):
-        # unit: degree
-        return self[:, 1]
-
-    @property
-    def alt(self):
-        # unit: meter
-        return self[:, 2]
-
-
-class Date(DataNDArray):
-    def __new__(cls, doy: ArrayLike, year: ArrayLike):
-        return super().__new__(cls, doy, year)
-
-    @property
-    def doy(self):
-        return self[:, 0]
-
-    @property
-    def year(self):
-        return self[:, 1]
+class Date(NamedTuple):
+    """非可索引类型，默认为唯一数据
+    """
+    year: int  # year
+    doy: int  # day of year
 
 
 class IGRF(DataNDArray):
     @classmethod
     def __build__(cls, container: DataIoC):
-        lon = container[WGS84].lon
-        lat = container[WGS84].lat
-        alt = container[WGS84].alt / 1000.0  # unit: km
+        lon, lat, alt = container[LocationWGS84].T
+
         # doy to datetime
-        year = container[Date].year
-        doy = container[Date].doy
-        date = datetime(int(year[0]), 1, 1) + timedelta(days=int(doy[0]) - 1)
+        year, doy = container[Date]
+        date = datetime(year, 1, 1) + timedelta(days=doy - 1)
 
-        geo_e, geo_n, geo_u = ppigrf.igrf(lon, lat, alt, date)
+        geo_e, geo_n, geo_u = ppigrf.igrf(lon, lat, alt / 1000, date)
         geo = np.row_stack((geo_e, geo_n, geo_u)).T
+
         return cls(*geo.T)
-
-    @property
-    def east(self):
-        return self[:, 0]
-
-    @property
-    def north(self):
-        return self[:, 1]
-
-    @property
-    def up(self):
-        return self[:, 2]
 
 
 class InertialAttitude(DataNDArray):
     def __new__(cls, yaw: ArrayLike, pitch: ArrayLike, roll: ArrayLike):
         return super().__new__(cls, yaw, pitch, roll)
-
-    @property
-    def yaw(self):
-        return self[:, 0]
-
-    @property
-    def pitch(self):
-        return self[:, 1]
-
-    @property
-    def roll(self):
-        return self[:, 2]
 
 
 class InsDirectionalCosine(DirectionalCosine):
@@ -127,9 +84,9 @@ if __name__ == "__main__":
         .take()
     )
     flt_d = surv_d["1002.02"]
+
     # date of flt1002
-    flt_d["doy"] = 172
-    flt_d["year"] = 2020
+    year, doy = 2020, 172
 
     # classic compensation
     tmi_with_interf = Tmi(tmi=flt_d["mag_3_uc"])
@@ -142,11 +99,9 @@ if __name__ == "__main__":
 
     # INS extended compensation
     fom_data = DataIoC().with_data(
-        Date[1](doy=flt_d["doy"], year=flt_d["year"]),
-        WGS84[1](lon=flt_d["lon"], lat=flt_d["lat"], alt=flt_d["utm_z"]),
-        InertialAttitude[1](
-            yaw=flt_d["ins_yaw"], pitch=flt_d["ins_pitch"], roll=flt_d["ins_roll"]
-        ),
+        Date(year=year, doy=doy),
+        LocationWGS84(lon=flt_d["lon"], lat=flt_d["lat"], alt=flt_d["utm_z"]),
+        InertialAttitude[1](yaw=flt_d["ins_yaw"], pitch=flt_d["ins_pitch"], roll=flt_d["ins_roll"]),
         MagVector[1](bx=flt_d["flux_d_x"], by=flt_d["flux_d_y"], bz=flt_d["flux_d_z"]),
     )
     fom_data.add_provider(DirectionalCosine, InsDirectionalCosine)
